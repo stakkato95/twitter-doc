@@ -391,19 +391,73 @@ In meinem Projekt wurde Istio zwecks Sammlung der Metriken und Verschlüsselung 
 
 ![18_istio_grafana](/images/18_istio_grafana.jpg)
 
-### Packaging für Deployment
+### Packaging und Deployment
 
 Als Packaging für den Service wurde Docker verwendet (Dockerfile im Rootverzeichnis jedes einzelnen Services). Build eines Images wird durch Makefile gestartet (auch wie im letzten Projekt). Jeder Service hat sein eigenes Repository auf Docker Hub.
 
 ![3_dockerhub](/images/3_dockerhub.jpg)
 
+Für jeden Service wurde ein Helm Chart erstellt, der alle wichtigen Teile eines Kubernetes Microservices enthält, und zwar Deployment, Service und (wenn nötig) Ingress. Helm Charts liegen genau so wie Docker Images im Service Repository. Um alle Service auf einmal deployen zu können wurde ein so genannter Umbrella Chart erstellt. Dieser Chart liegt in einem eigenem Repository und fasst Deployment Informationen über alle Services zusammen. Dieser Chart ist auch fürs Deployment der Infrastruktur verantwrlich (Kafka, Postgres, MySQL). Dieser Umbrealla Chart und die entsprechende `values.yaml` Datei haben folgende Struktur:
+
+`Chart.yaml des Umbrella Charts`
+```yaml
+apiVersion: v2
+name: twitter-app
+version: 0.1.12
+dependencies:
+  - name: twitter-graphql
+    repository: https://stakkato95.github.io/twitter-graphql
+    version: 0.1.2
+  - name: twitter-users
+    repository: https://stakkato95.github.io/twitter-users
+    version: 0.1.1
+  - name: twitter-tweets
+    repository: https://stakkato95.github.io/twitter-tweets
+    version: 0.1.1
+  - name: twitter-analytics
+    repository: https://stakkato95.github.io/twitter-analytics
+    version: 0.1.0
+  - name: mysql
+    repository: https://charts.bitnami.com/bitnami
+    version: 9.1.7
+  - name: postgresql
+    repository: https://charts.bitnami.com/bitnami
+    version: 11.6.5
+  - name: kafka
+    repository: https://charts.bitnami.com/bitnami
+    version: 17.2.6
+```
+
+`values.yaml des Umbrella Charts`
+```yaml
+mysql:
+  auth:
+    rootPassword: root
+    database: users
+
+global:
+  postgresql:
+    auth:
+      username: root
+      password: root
+      database: tweetsdb
+
+kafka:
+  deleteTopicEnable: true
+  auth:
+    clientProtocol: plaintext
+    sasl:
+      jaas:
+        clientUsers: "{user}"
+        clientPasswords: "{user}"
+```
+
+Die ganze Microservice Anwendung wird mittels ArgoCD installiert. ArgoCD ist ein Open Source Projekt, das GitOps Modell des Deployments implementiert. Laut diesem Modell werden Microservices von einer Software-Komponente in einem Kubernetes Cluster installiert, die ebenfalls in einem (möglicherweise im selben) Kubernetes Cluster läuft. Diese Komponente (ArgoCD) beobachtet Repository, in dem ein Helm Umbrella-Chart gespeichrt ist, und installiert ihn jedes Mal, wenn er sich ändert. Dabei werden nicht alle Services auf einmal ersetzt / aktualisiert, sondern nur die Services, deren Definition sich im `Chart.yaml` des Umbrella-Charts geändert hat. 
+
+Skripts zur Installation von ArgoCD auf einem lokalen Cluster wurden im `twitter-argo` Repository gespeichert. Das Deployment von Simple-Twitter mittels Argo schaut so aus:
 
 
-
-
-
-
-
+Zwecks weiterer Optimierung des Deployment Prozesses
 
 
 

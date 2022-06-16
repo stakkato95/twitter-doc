@@ -381,7 +381,15 @@ Istio ist eine auf Open Source basierende Service Mesh-Plattform, die steuert, w
 
 In meinem Projekt wurde Istio zwecks Sammlung der Metriken und Verschlüsselung der Inter-Service-Kommunikation eingesetzt.
 
-<!-- ![13_istio???](/images/12_all_tweets.jpg) -->
+![14_istio_mesh_1](/images/14_istio_mesh_1.jpg)
+
+![15_istio_mesh_2](/images/15_istio_mesh_2.jpg)
+
+![16_istio_jaeger_1](/images/16_istio_jaeger_1.jpg)
+
+![17_istio_jaeger_2](/images/17_istio_jaeger_2.jpg)
+
+![18_istio_grafana](/images/18_istio_grafana.jpg)
 
 ### Packaging für Deployment
 

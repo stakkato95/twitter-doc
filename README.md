@@ -397,7 +397,7 @@ Als Packaging für den Service wurde Docker verwendet (Dockerfile im Rootverzeic
 
 ![3_dockerhub](/images/3_dockerhub.jpg)
 
-Für jeden Service wurde ein Helm Chart erstellt, der alle wichtigen Teile eines Kubernetes Microservices enthält, und zwar Deployment, Service und (wenn nötig) Ingress. Helm Charts liegen genau so wie Docker Images im Service Repository. Um alle Service auf einmal deployen zu können wurde ein so genannter Umbrella Chart erstellt. Dieser Chart liegt in einem eigenem Repository und fasst Deployment Informationen über alle Services zusammen. Dieser Chart ist auch fürs Deployment der Infrastruktur verantwrlich (Kafka, Postgres, MySQL). Dieser Umbrealla Chart und die entsprechende `values.yaml` Datei haben folgende Struktur:
+Für jeden Service wurde ein Helm Chart erstellt, der alle wichtigen Teile eines Kubernetes Microservices enthält, und zwar Deployment, Service und (wenn nötig) Ingress. Helm Charts liegen genau so wie Docker Images im Service Repository. Um alle Service auf einmal deployen zu können wurde ein so genannter Umbrella Chart erstellt. Dieser Chart liegt in einem eigenem Repository und beschreibt, wie alle Service deployt werden sollen. Dieser Chart ist auch fürs Deployment der Infrastruktur verantwrlich (Kafka, Postgres, MySQL). Dieser Umbrealla Chart und die entsprechende `values.yaml` Datei haben folgende Struktur:
 
 `Chart.yaml des Umbrella Charts`
 ```yaml
@@ -452,235 +452,119 @@ kafka:
         clientPasswords: "{user}"
 ```
 
-Die ganze Microservice Anwendung wird mittels ArgoCD installiert. ArgoCD ist ein Open Source Projekt, das GitOps Modell des Deployments implementiert. Laut diesem Modell werden Microservices von einer Software-Komponente in einem Kubernetes Cluster installiert, die ebenfalls in einem (möglicherweise im selben) Kubernetes Cluster läuft. Diese Komponente (ArgoCD) beobachtet Repository, in dem ein Helm Umbrella-Chart gespeichrt ist, und installiert ihn jedes Mal, wenn er sich ändert. Dabei werden nicht alle Services auf einmal ersetzt / aktualisiert, sondern nur die Services, deren Definition sich im `Chart.yaml` des Umbrella-Charts geändert hat. 
+Die ganze Microservice Anwendung wird mittels ArgoCD installiert. ArgoCD ist ein Open Source Projekt, das GitOps Modell des Deployments implementiert. Laut diesem Modell werden Microservices von einer Software-Komponente in einem Kubernetes Cluster installiert, die ebenfalls in einem (möglicherweise im selben) Kubernetes Cluster läuft. Diese Komponente (ArgoCD) beobachtet Repository, in dem ein Helm Umbrella-Chart gespeichrt ist, und installiert ihn auf dem Kubernetes Cluster jedes Mal, wenn er sich ändert. Dabei werden nicht alle Services auf einmal ersetzt / aktualisiert, sondern nur die Services, deren Definition sich im `Chart.yaml` des Umbrella-Charts geändert hat. 
 
 Skripts zur Installation von ArgoCD auf einem lokalen Cluster wurden im `twitter-argo` Repository gespeichert. Das Deployment von Simple-Twitter mittels Argo schaut so aus:
 
+![19_argo_1](/images/19_argo_1.jpg)
 
-Zwecks weiterer Optimierung des Deployment Prozesses
+![20_argo_2](/images/20_argo_2.jpg)
 
+![21_argo_3](/images/21_argo_3.jpg)
 
+![22_argo_4](/images/22_argo_4.jpg)
 
+Ein Umbrella Chart besteht aus mehreren untergeordneten Charts, die (auch wie der Umbrella Chart selbst) in Form eines Archivs auf einem Server zugänglich sein sollen. Der Prozess der Erstellung solcher Archive wurde mittels GitHub Actions automatisiert. Bei jedem Push auf Main branch wird eine neue Version des Charts erzeugt. Folglich wurde die Entwicklung einzelner Features auf Feature-Branches umgelegt.
 
+![23_github_1](/images/23_github_1.jpg)
 
+![24_github_2](/images/24_github_2.jpg)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-### Deployment der Infrastruktur
-
-Die Infrastruktur dieses Projekts (MySQL und Prostgres) wird mittels Helm (Package Manager für Kubernetes) im k8s installiert (k8s Cluster im Docker Desktop). Zwecks Vereinfachung wiederkehrender Operationen wurden insgesamt vier PowerShell Skripts geschrieben (jeweils zwei pro Datenbamk). Skripts im Verzeichnis `k8s\mysql`:
-
-`install.ps1`
-```powershell
-$name = "mysql"
-
-# 1
-kubectl delete $(kubectl get pvc -l app.kubernetes.io/name=$name -o=name)
-
-# 2
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm install $name bitnami/mysql --set auth.rootPassword=root --set auth.database=users
-
-# 3
-echo "`nwaiting for pod to be ready..."
-kubectl wait --for=condition=Ready $(kubectl get pod -l app.kubernetes.io/name=$name -o=name)
-kubectl port-forward svc/$name 3306:3306
+Ein Beispiel der `index.yaml` Datei, die Versionen des Umbrella Charts enthält.
+```yaml
+apiVersion: v1
+entries:
+  twitter-app:
+  - apiVersion: v2
+    created: "2022-06-12T08:16:21.537501856Z"
+    dependencies:
+    - name: twitter-graphql
+      repository: https://stakkato95.github.io/twitter-graphql
+      version: 0.1.2
+    - name: twitter-users
+      repository: https://stakkato95.github.io/twitter-users
+      version: 0.1.1
+    - name: twitter-tweets
+      repository: https://stakkato95.github.io/twitter-tweets
+      version: 0.1.1
+    - name: twitter-analytics
+      repository: https://stakkato95.github.io/twitter-analytics
+      version: 0.1.0
+    - name: mysql
+      repository: https://charts.bitnami.com/bitnami
+      version: 9.1.7
+    - name: postgresql
+      repository: https://charts.bitnami.com/bitnami
+      version: 11.6.5
+    - name: kafka
+      repository: https://charts.bitnami.com/bitnami
+      version: 17.2.6
+    digest: 01c0e22a9ef0d94964b2ca159d4c9500742dba9e3afd3f07cb8e5171a4844280
+    name: twitter-app
+    urls:
+    - https://github.com/stakkato95/twitter-helm/releases/download/twitter-app-0.1.12/twitter-app-0.1.12.tgz
 ```
 
-Operationen im install Skript:
-1) Persistence Volume Claim der zuletzt angelegten Datenbank löschen. Dadurch wird automatisch Persistence Volume und folglich alle Daten der Datenbank entfernt.
-2) Helm Repo, falls noch nicht hinzugefügt, hinzufügen
-3) Abwarten bis der Pod im Redy zustand ist und dann den Port auf localhost mappen (zwecks Visualisierung der Daten in einer Database Viewer App)
-
-`uninstall.ps1`
-```powershell
-$name = "mysql"
-
-#1
-helm uninstall $name
-
-#2
-kubectl delete $(kubectl get pvc -l app.kubernetes.io/name=$name -o=name)
-```
-
-Operationen im uninstall Skript:
-1) Das Deployment der Datenbank mit Helm löschen
-2) Anschließend (einfach zur Sicherheit) ebenfalls Persistence Volume Claim löschen
-
-### Deployment der Infrastruktur
-
-Die Anwendung wird dieses Mal nicht nur mit PowerShell Skripts, sondern auch (zum Teil) mit Helm deployed. Im Verzeichnis jeden einzelnen Services wurde mithilfe Helm "helm" Verzeichnis angelegt. In dem Verzeichnis liegen so genannte "Templates". Zu Templates zählen Deployments, Services, Ingress und alle andere Ressourcen, die man mit `kubecetl apply -f XYZ.yaml` im k8s Cluster erstellen kann. 
-
-![4_helm](/images/4_helm.jpg)
-
-Deployment hat folgende Struktur:
+Ein Beispiel der `index.yaml` Datei, die Versionen des Graphql Charts enthält.
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ .Chart.Name }}-deployment
-  labels:
-    {{- include "helm.labels" . | nindent 4 }}
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      {{- include "helm.selectorLabels" . | nindent 6 }}
-  template:
-    metadata:
-      labels:
-        {{- include "helm.selectorLabels" . | nindent 8 }}
-    spec:
-      containers:
-        - name: {{ .Chart.Name }}-container
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          ports:
-            - name: {{ .Values.service.http.name }}-container
-              containerPort: 8080
-              protocol: TCP
+apiVersion: v1
+entries:
+  twitter-graphql:
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2022-06-11T20:22:53.621197402Z"
+    description: A Helm chart for twitter graphql service
+    digest: b130b31278434b5c6e60bea1623d6e5ccabbebb053e275bcf238e750fd94c435
+    home: https://github.com/stakkato95/service-engineering-simple-twitter
+    maintainers:
+    - email: stakkato95@gmail.com
+      name: Artsiom Kaliaha
+    name: twitter-graphql
+    type: application
+    urls:
+    - https://github.com/stakkato95/twitter-graphql/releases/download/twitter-graphql-0.1.2/twitter-graphql-0.1.2.tgz
+    version: 0.1.2
 ```
 
-Die Werte, die in eckigen Klammern `{{ }}` stehen, werden aus der Chart-Definition und aus der `values.yaml` Datei übernommen.
-
-`Chart.yaml`
+`ci.yaml` Datei in `.github/workflows`, welche die Erstellung und die Veröffentlichung eines Charts auf GitHub automatisiert.
 ```yaml
-apiVersion: v2
-name: twitter-service-tweets
-description: A Helm chart for twitter tweets service
+name: Release Charts
 
-home: https://github.com/stakkato95/service-engineering-simple-twitter
+on:
+  push:
+    branches:
+      - main
 
-maintainers:
-  - name: Artsiom Kaliaha
-    email: stakkato95@gmail.com
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
-type: application
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+      - name: Install Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: v3.8.1
 
-# Chart version. Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: 0.1.0
-
-# Application version
-appVersion: "0.1.0"
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.4.0
+        with:
+          charts_dir: .
+        env:
+          CR_TOKEN: "${{ secrets.CR_TOKEN }}"
 ```
 
-`values.yaml`
-```yaml
-image:
-  repository: stakkato95/twitter-service-tweets
-  pullPolicy: Always
-  tag: "latest"
-
-nameOverride: ""
-fullnameOverride: ""
-
-service:
-  type: ClusterIP
-  http:
-    name: http
-    port: 80
-
-ingress:
-  enabled: true
-```
-
-Gerade bevor ein Helm Chart deployed wird, wird er kompiliert. Das Ergebniss für das Deployment:
-
-`helm install tweets helm --dry-run`
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: twitter-service-tweets-deployment
-  labels:
-    helm.sh/chart: twitter-service-tweets-0.1.0
-    app.kubernetes.io/name: twitter-service-tweets
-    app.kubernetes.io/instance: tweets
-    app.kubernetes.io/version: "0.1.0"
-    app.kubernetes.io/managed-by: Helm
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: twitter-service-tweets
-      app.kubernetes.io/instance: tweets
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: twitter-service-tweets
-        app.kubernetes.io/instance: tweets
-    spec:
-      containers:
-        - name: twitter-service-tweets-container
-          image: "stakkato95/twitter-service-tweets:latest"
-          imagePullPolicy: Always
-          ports:
-            - name: http-container
-              containerPort: 8080
-              protocol: TCP
-```
-
-Auf solche Art werden alle Services lokal deployed. Der Skript, der alle Services auf einmal installiert:
-
-`app-install.ps1`
-```powershell
-cd ../twitter-service-graphql
-helm install graphql helm
-echo ""
-
-cd ../twitter-service-tweets
-helm install tweets helm
-echo ""
-
-cd ../twitter-service-users
-helm install users helm
-
-cd ../k8s
-```
-
-Anzahl der Pods, wenn Infrastruktur und alle Services deployed sind:
-
-![5_pods](/images/5_pods.jpg)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+![25_github_3](/images/25_github_3.jpg)
 
 
 ### Testdurchlauf
@@ -710,9 +594,11 @@ Nach dem einige Tweets gepostet sind, können sie mittels einer Query abgefragt 
 ### Con­clu­sio
 
 Im vorliegenden Projekt wurde Folgendes ausprobiert:
+- Message Oriented Middleware in Form von Kafka
 - Graphql als "Frontend for Backend" Pattern
+- gRPC für Inter-Service-Kommunikation
+- Deployment von Microservices auf Basis Kubernetes mit Helm
+- Automatisierung des Deployment Prozesses durch GitHub Actions und ArgoCD
 - Authentifizierung mittels JWT beim Graphql Server
-- Go ORM gorm
-- Go Web-Framework gin
-- Packaging und Deployment der Microservices mittels Helm Charts
+- Go und mehrere Go Bibliotheken und Frameworks für die Entwicklung von Microservices
 - Erstellung eigener Go Packages am Beispiel service-engineering-go-lib
